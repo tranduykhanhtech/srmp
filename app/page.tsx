@@ -5,6 +5,7 @@ import Navbar from '@/components/Navbar';
 import SpotCard from '@/components/SpotCard';
 import CreateSpotModal from '@/components/CreateSpotModal';
 import EditSpotModal from '@/components/EditSpotModal';
+import DraggableFab from '@/components/DraggableFab';
 import AuthModal from '@/components/AuthModal';
 import CategoryIcon from '@/components/CategoryIcon';
 import { Spot } from '@/types/spot';
@@ -501,23 +502,27 @@ export default function Home() {
         )}
       </main>
 
-      {/* Floating Action Button (FAB) - Mobile Only */}
-      <div className="md:hidden fixed bottom-6 right-4 sm:bottom-8 sm:right-8 z-30 pb-safe">
-        <button
-          onClick={() => {
-            if (!user) {
-              setIsAuthOpen(true);
-            } else {
-              setIsCreateOpen(true);
-            }
-          }}
-          className="h-13 px-5 rounded-full bg-black text-white shadow-2xl shadow-black/25 flex items-center gap-2 active:scale-95 transition-all cursor-pointer font-bold text-sm hover:bg-neutral-800"
-          aria-label="Thêm quán mới"
-        >
-          <Plus className="w-4.5 h-4.5 stroke-[2.5]" />
-          <span>Thêm quán</span>
-        </button>
-      </div>
+      {/* Action Button - Only shown after user logs in */}
+      {user && (
+        <>
+          {/* Mobile: Draggable circular (+) button */}
+          <div className="md:hidden">
+            <DraggableFab onClick={() => setIsCreateOpen(true)} />
+          </div>
+
+          {/* Desktop: Fixed bottom-right (+ Thêm quán) button */}
+          <div className="hidden md:block fixed bottom-8 right-8 z-30">
+            <button
+              onClick={() => setIsCreateOpen(true)}
+              className="h-12 px-5 rounded-full bg-black text-white shadow-2xl shadow-black/25 flex items-center gap-2 hover:bg-neutral-800 active:scale-95 transition-all cursor-pointer font-bold text-sm"
+              aria-label="Thêm quán mới"
+            >
+              <Plus className="w-4.5 h-4.5 stroke-[2.5]" />
+              <span>Thêm quán</span>
+            </button>
+          </div>
+        </>
+      )}
 
       {/* Modals */}
       <CreateSpotModal

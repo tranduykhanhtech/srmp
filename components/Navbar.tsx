@@ -1,19 +1,18 @@
 'use client';
 
 import React from 'react';
-import { Plus, LogOut } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 
 interface NavbarProps {
   user: { name: string; email: string; avatar: string } | null;
   onOpenAuth: () => void;
-  onOpenCreateSpot: () => void;
+  onOpenCreateSpot?: () => void;
   onSignOut: () => void;
 }
 
 export default function Navbar({
   user,
   onOpenAuth,
-  onOpenCreateSpot,
   onSignOut,
 }: NavbarProps) {
   const [imgError, setImgError] = React.useState(false);
@@ -45,24 +44,9 @@ export default function Navbar({
 
         {/* Actions */}
         <div className="flex items-center gap-3">
-          {/* Quick Add Button */}
-          <button
-            onClick={() => {
-              if (!user) {
-                onOpenAuth();
-              } else {
-                onOpenCreateSpot();
-              }
-            }}
-            className="flex items-center gap-2 h-9.5 md:h-10 px-3.5 md:px-5 rounded-full text-xs md:text-sm font-bold bg-black text-white hover:bg-neutral-800 active:scale-95 transition-all cursor-pointer shadow-sm"
-          >
-            <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>Thêm quán</span>
-          </button>
-
           {/* User Auth */}
           {user ? (
-            <div className="flex items-center gap-2.5 pl-2.5 border-l border-gray-200">
+            <div className="flex items-center gap-2.5">
               <span className="hidden md:inline text-sm font-semibold text-neutral-800 truncate max-w-[150px]">
                 {user.name}
               </span>
