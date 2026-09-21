@@ -5,7 +5,6 @@ import Navbar from '@/components/Navbar';
 import SpotCard from '@/components/SpotCard';
 import CreateSpotModal from '@/components/CreateSpotModal';
 import EditSpotModal from '@/components/EditSpotModal';
-import DraggableFab from '@/components/DraggableFab';
 import AuthModal from '@/components/AuthModal';
 import CategoryIcon from '@/components/CategoryIcon';
 import { Spot } from '@/types/spot';
@@ -14,29 +13,11 @@ import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { Search, X, Plus, MapPin, CheckCircle2 } from 'lucide-react';
 
 export default function Home() {
-  // Auth state
+  // Auth & Data state (Hydration-safe: matches server on initial render)
   const [user, setUser] = useState<{ name: string; email: string; avatar: string; id?: string } | null>(null);
   const [supabaseReady] = useState(() => isSupabaseConfigured());
-
-  // Spots data with Instant Local Cache (Stale-While-Revalidate)
-  const [spots, setSpots] = useState<Spot[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('animon_spots_cache') || localStorage.getItem('spotshare_spots_cache');
-        if (cached) return JSON.parse(cached);
-      } catch {}
-    }
-    return [];
-  });
-  const [loading, setLoading] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('animon_spots_cache') || localStorage.getItem('spotshare_spots_cache');
-        if (cached && JSON.parse(cached).length > 0) return false;
-      } catch {}
-    }
-    return true;
-  });
+  const [spots, setSpots] = useState<Spot[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'all' | 'my-posts'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -57,6 +38,25 @@ export default function Home() {
 
   // Sync Supabase Auth & Spots
   useEffect(() => {
+    // 1. Instant Cache Hydration on client mount (safe after initial hydration)
+    try {
+      const savedUser = localStorage.getItem('animon_user_session');
+      if (savedUser) {
+        setUser(JSON.parse(savedUser));
+      }
+    } catch {}
+
+    try {
+      const cachedSpots = localStorage.getItem('animon_spots_cache') || localStorage.getItem('spotshare_spots_cache');
+      if (cachedSpots) {
+        const parsed = JSON.parse(cachedSpots);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSpots(parsed);
+          setLoading(false);
+        }
+      }
+    } catch {}
+
     if (supabaseReady) {
       const supabase = createClient();
       let isMounted = true;
@@ -64,26 +64,37 @@ export default function Home() {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (!isMounted) return;
         if (session?.user) {
-          setUser({
+          const userData = {
             id: session.user.id,
             name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Foodie',
             email: session.user.email || '',
             avatar: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || '',
-          });
+          };
+          setUser(userData);
+          try {
+            localStorage.setItem('animon_user_session', JSON.stringify(userData));
+          } catch {}
         }
       }).catch(() => {});
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         if (!isMounted) return;
         if (session?.user) {
-          setUser({
+          const userData = {
             id: session.user.id,
             name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Foodie',
             email: session.user.email || '',
             avatar: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || '',
-          });
-        } else {
+          };
+          setUser(userData);
+          try {
+            localStorage.setItem('animon_user_session', JSON.stringify(userData));
+          } catch {}
+        } else if (event === 'SIGNED_OUT') {
           setUser(null);
+          try {
+            localStorage.removeItem('animon_user_session');
+          } catch {}
         }
       });
 
@@ -137,6 +148,9 @@ export default function Home() {
       await supabase.auth.signOut();
     }
     setUser(null);
+    try {
+      localStorage.removeItem('animon_user_session');
+    } catch {}
     setActiveTab('all');
     setSelectedCategory('all');
     showToast('Đã đăng xuất');
@@ -502,26 +516,18 @@ export default function Home() {
         )}
       </main>
 
-      {/* Action Button - Only shown after user logs in */}
+      {/* Floating Action Button - Fixed bottom right, only shown after user logs in */}
       {user && (
-        <>
-          {/* Mobile: Draggable circular (+) button */}
-          <div className="md:hidden">
-            <DraggableFab onClick={() => setIsCreateOpen(true)} />
-          </div>
-
-          {/* Desktop: Fixed bottom-right (+ Thêm quán) button */}
-          <div className="hidden md:block fixed bottom-8 right-8 z-30">
-            <button
-              onClick={() => setIsCreateOpen(true)}
-              className="h-12 px-5 rounded-full bg-black text-white shadow-2xl shadow-black/25 flex items-center gap-2 hover:bg-neutral-800 active:scale-95 transition-all cursor-pointer font-bold text-sm"
-              aria-label="Thêm quán mới"
-            >
-              <Plus className="w-4.5 h-4.5 stroke-[2.5]" />
-              <span>Thêm quán</span>
-            </button>
-          </div>
-        </>
+        <div className="fixed bottom-5 right-4 sm:bottom-8 sm:right-8 z-30 pb-safe">
+          <button
+            onClick={() => setIsCreateOpen(true)}
+            className="h-11 sm:h-12 px-4 sm:px-5 rounded-full bg-black text-white shadow-[0_4px_20px_rgba(0,0,0,0.25)] hover:shadow-[0_6px_24px_rgba(0,0,0,0.35)] flex items-center gap-2 active:scale-95 transition-all cursor-pointer font-bold text-xs sm:text-sm hover:bg-neutral-800"
+            aria-label="Thêm quán mới"
+          >
+            <Plus className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.5]" />
+            <span>Thêm quán</span>
+          </button>
+        </div>
       )}
 
       {/* Modals */}

@@ -23,7 +23,19 @@ export function createClient() {
   const { url, key } = getSupabaseKeys();
   return createBrowserClient(
     url || 'https://placeholder-url.supabase.co',
-    key || 'placeholder-anon-key'
+    key || 'placeholder-anon-key',
+    {
+      cookieOptions: {
+        maxAge: 31536000, // 1 year persistent session
+        sameSite: 'lax',
+        path: '/',
+      },
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    }
   );
 }
 
