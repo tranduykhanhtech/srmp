@@ -80,3 +80,30 @@ CREATE POLICY "Users can update their own spots"
 CREATE POLICY "Users can delete their own spots" 
   ON public.spots FOR DELETE 
   USING (auth.uid() = created_by);
+
+
+-- 3. BẢNG LƯU QUÁN YÊU THÍCH (BOOKMARKS)
+CREATE TABLE IF NOT EXISTS public.bookmarks (
+  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  spot_id UUID REFERENCES public.spots(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+  PRIMARY KEY (user_id, spot_id)
+);
+
+ALTER TABLE public.bookmarks ENABLE ROW LEVEL SECURITY;
+
+-- User xem danh sách quán đã lưu của chính mình
+CREATE POLICY "Users can view their own bookmarks" 
+  ON public.bookmarks FOR SELECT 
+  USING (auth.uid() = user_id);
+
+-- User lưu quán cho chính mình
+CREATE POLICY "Users can insert their own bookmarks" 
+  ON public.bookmarks FOR INSERT 
+  WITH CHECK (auth.uid() = user_id);
+
+-- User bỏ lưu quán của chính mình
+CREATE POLICY "Users can delete their own bookmarks" 
+  ON public.bookmarks FOR DELETE 
+  USING (auth.uid() = user_id);
+

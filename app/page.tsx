@@ -10,16 +10,18 @@ import CategoryIcon from '@/components/CategoryIcon';
 import { Spot } from '@/types/spot';
 import { DEFAULT_PRESET_CATEGORIES } from '@/lib/constants';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
-import { Search, X, Plus, MapPin, CheckCircle2 } from 'lucide-react';
+import { Search, X, Plus, MapPin, CheckCircle2, Bookmark } from 'lucide-react';
 
 export default function Home() {
   // Auth & Data state (Hydration-safe: matches server on initial render)
   const [user, setUser] = useState<{ name: string; email: string; avatar: string; id?: string } | null>(null);
   const [supabaseReady] = useState(() => isSupabaseConfigured());
   const [spots, setSpots] = useState<Spot[]>([]);
+  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>([]);
+  const [highlightedSpotId, setHighlightedSpotId] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'all' | 'my-posts'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'bookmarks' | 'my-posts'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   // Modals
@@ -36,13 +38,30 @@ export default function Home() {
     setTimeout(() => setToastMsg(null), 2500);
   };
 
-  // Sync Supabase Auth & Spots
+  // Sync Supabase Auth & Spots & Bookmarks
   useEffect(() => {
     // 1. Instant Cache Hydration on client mount (safe after initial hydration)
     try {
       const savedUser = localStorage.getItem('animon_user_session');
       if (savedUser) {
         setUser(JSON.parse(savedUser));
+      }
+    } catch {}
+
+    try {
+      const savedBookmarks = localStorage.getItem('animon_bookmarks');
+      if (savedBookmarks) {
+        setBookmarkedIds(JSON.parse(savedBookmarks));
+      }
+    } catch {}
+
+    try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const paramSpot = params.get('spot');
+        if (paramSpot) {
+          setHighlightedSpotId(paramSpot);
+        }
       }
     } catch {}
 
@@ -74,8 +93,27 @@ export default function Home() {
           try {
             localStorage.setItem('animon_user_session', JSON.stringify(userData));
           } catch {}
+
+          // Sync saved bookmarks from Supabase
+          supabase
+            .from('bookmarks')
+            .select('spot_id')
+            .eq('user_id', session.user.id)
+            .then(
+              ({ data: bmData }) => {
+                if (bmData && bmData.length > 0) {
+                  const dbIds = bmData.map((b: { spot_id: string }) => b.spot_id);
+                  setBookmarkedIds((prev) => {
+                    const merged = Array.from(new Set([...prev, ...dbIds]));
+                    try { localStorage.setItem('animon_bookmarks', JSON.stringify(merged)); } catch {}
+                    return merged;
+                  });
+                }
+              },
+              () => {}
+            );
         }
-      }).catch(() => {});
+      });
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         if (!isMounted) return;
@@ -90,6 +128,25 @@ export default function Home() {
           try {
             localStorage.setItem('animon_user_session', JSON.stringify(userData));
           } catch {}
+
+          // Sync saved bookmarks
+          supabase
+            .from('bookmarks')
+            .select('spot_id')
+            .eq('user_id', session.user.id)
+            .then(
+              ({ data: bmData }) => {
+                if (bmData && bmData.length > 0) {
+                  const dbIds = bmData.map((b: { spot_id: string }) => b.spot_id);
+                  setBookmarkedIds((prev) => {
+                    const merged = Array.from(new Set([...prev, ...dbIds]));
+                    try { localStorage.setItem('animon_bookmarks', JSON.stringify(merged)); } catch {}
+                    return merged;
+                  });
+                }
+              },
+              () => {}
+            );
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
           try {
@@ -271,6 +328,44 @@ export default function Home() {
     }
   };
 
+  const handleToggleBookmark = async (spotId: string) => {
+    const isCurrentlyBookmarked = bookmarkedIds.includes(spotId);
+    const updated = isCurrentlyBookmarked
+      ? bookmarkedIds.filter((id) => id !== spotId)
+      : [...bookmarkedIds, spotId];
+
+    setBookmarkedIds(updated);
+    try {
+      localStorage.setItem('animon_bookmarks', JSON.stringify(updated));
+    } catch {}
+    showToast(isCurrentlyBookmarked ? 'Đã bỏ lưu quán' : 'Đã lưu quán vào mục yêu thích!');
+
+    if (supabaseReady && user?.id) {
+      try {
+        const supabase = createClient();
+        if (isCurrentlyBookmarked) {
+          await supabase.from('bookmarks').delete().match({ user_id: user.id, spot_id: spotId });
+        } else {
+          await supabase.from('bookmarks').upsert({ user_id: user.id, spot_id: spotId });
+        }
+      } catch (err) {
+        console.warn('Bookmarks Supabase sync note:', err);
+      }
+    }
+  };
+
+  // Auto scroll & highlight shared spot if ?spot=xxx in URL
+  useEffect(() => {
+    if (highlightedSpotId && spots.length > 0) {
+      setTimeout(() => {
+        const el = document.getElementById(`spot-${highlightedSpotId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 400);
+    }
+  }, [highlightedSpotId, spots]);
+
   // Get all unique categories dynamically
   const availableCategories = useMemo(() => {
     const spotCategories = spots.map((s) => s.category).filter(Boolean) as string[];
@@ -282,7 +377,9 @@ export default function Home() {
     let result = spots;
 
     // Filter by tab
-    if (activeTab === 'my-posts' && user) {
+    if (activeTab === 'bookmarks') {
+      result = result.filter((s) => bookmarkedIds.includes(s.id));
+    } else if (activeTab === 'my-posts' && user) {
       result = result.filter(
         (s) => s.created_by === user.id || s.author_name === user.name
       );
@@ -306,7 +403,7 @@ export default function Home() {
     }
 
     return result;
-  }, [spots, activeTab, selectedCategory, user, searchQuery]);
+  }, [spots, activeTab, selectedCategory, user, searchQuery, bookmarkedIds]);
 
   return (
     <div className="min-h-screen bg-neutral-50/50 text-black flex flex-col">
@@ -398,45 +495,51 @@ export default function Home() {
               )}
             </div>
 
-            {user && (
-              <>
-                {/* Mobile tab button */}
+            {/* Segmented Control Tabs */}
+            <div className="flex items-center p-0.5 bg-neutral-100 rounded-xl border border-neutral-200/80 text-xs font-semibold">
+              <button
+                onClick={() => setActiveTab('all')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  activeTab === 'all'
+                    ? 'bg-white text-black shadow-xs font-bold'
+                    : 'text-neutral-500 hover:text-black'
+                }`}
+              >
+                Tất cả
+              </button>
+              <button
+                onClick={() => setActiveTab('bookmarks')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  activeTab === 'bookmarks'
+                    ? 'bg-white text-black shadow-xs font-bold'
+                    : 'text-neutral-500 hover:text-black'
+                }`}
+              >
+                <Bookmark className={`w-3.5 h-3.5 ${activeTab === 'bookmarks' ? 'fill-black' : ''}`} />
+                <span>Đã lưu</span>
+                {bookmarkedIds.length > 0 && (
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold leading-none ${
+                      activeTab === 'bookmarks' ? 'bg-black text-white' : 'bg-neutral-200 text-neutral-700'
+                    }`}
+                  >
+                    {bookmarkedIds.length}
+                  </span>
+                )}
+              </button>
+              {user && (
                 <button
-                  onClick={() => setActiveTab(activeTab === 'my-posts' ? 'all' : 'my-posts')}
-                  className={`md:hidden text-[13px] transition-colors cursor-pointer ${
-                    activeTab === 'my-posts' 
-                      ? 'font-bold text-black underline' 
+                  onClick={() => setActiveTab('my-posts')}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    activeTab === 'my-posts'
+                      ? 'bg-white text-black shadow-xs font-bold'
                       : 'text-neutral-500 hover:text-black'
                   }`}
                 >
-                  {activeTab === 'my-posts' ? '← Xem tất cả quán' : 'Quán của tôi'}
+                  Của tôi
                 </button>
-
-                {/* Desktop Segmented Tabs */}
-                <div className="hidden md:flex items-center p-1 bg-neutral-100 rounded-xl border border-neutral-200/80 text-xs font-semibold">
-                  <button
-                    onClick={() => setActiveTab('all')}
-                    className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                      activeTab === 'all'
-                        ? 'bg-white text-black shadow-sm'
-                        : 'text-neutral-600 hover:text-black'
-                    }`}
-                  >
-                    Tất cả quán
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('my-posts')}
-                    className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                      activeTab === 'my-posts'
-                        ? 'bg-white text-black shadow-sm'
-                        : 'text-neutral-600 hover:text-black'
-                    }`}
-                  >
-                    Quán của tôi
-                  </button>
-                </div>
-              </>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -474,27 +577,60 @@ export default function Home() {
                 searchQuery={searchQuery}
                 onShowToast={showToast}
                 onSelectCategory={(cat) => setSelectedCategory(cat)}
+                isBookmarked={bookmarkedIds.includes(spot.id)}
+                onToggleBookmark={handleToggleBookmark}
+                isHighlighted={highlightedSpotId === spot.id}
               />
             ))}
           </div>
         ) : (
           <div className="text-center py-16 px-5 rounded-3xl bg-white border border-neutral-200 my-6 space-y-4 shadow-sm max-w-md mx-auto">
             <div className="w-14 h-14 rounded-2xl bg-neutral-100 border border-neutral-200/80 flex items-center justify-center mx-auto text-neutral-800">
-              <MapPin className="w-7 h-7" />
+              {activeTab === 'bookmarks' ? (
+                <Bookmark className="w-7 h-7" />
+              ) : (
+                <MapPin className="w-7 h-7" />
+              )}
             </div>
             <div className="space-y-1">
               <h2 className="text-base sm:text-lg font-bold text-neutral-900">
-                {searchQuery || selectedCategory !== 'all'
+                {activeTab === 'bookmarks'
+                  ? 'Chưa có quán nào được lưu'
+                  : activeTab === 'my-posts'
+                  ? 'Bạn chưa đăng quán nào'
+                  : searchQuery || selectedCategory !== 'all'
                   ? 'Không tìm thấy quán nào'
                   : 'Chưa có địa điểm nào'}
               </h2>
               <p className="text-sm text-neutral-500 max-w-xs mx-auto leading-relaxed">
-                {searchQuery || selectedCategory !== 'all'
+                {activeTab === 'bookmarks'
+                  ? 'Bấm vào biểu tượng lá cờ (Bookmark) trên các thẻ quán ăn bạn thích để lưu lại xem sau nhé!'
+                  : activeTab === 'my-posts'
+                  ? 'Hãy chia sẻ những quán ăn ngon chuẩn gu của bạn cho mọi người cùng biết!'
+                  : searchQuery || selectedCategory !== 'all'
                   ? 'Không có kết quả khớp với tìm kiếm. Thử chọn danh mục khác nhé!'
                   : 'Hãy là người đầu tiên chia sẻ quán ăn ngon cho mọi người!'}
               </p>
             </div>
-            {searchQuery || selectedCategory !== 'all' ? (
+            {activeTab === 'bookmarks' ? (
+              <button
+                onClick={() => {
+                  setActiveTab('all');
+                  setSelectedCategory('all');
+                  setSearchQuery('');
+                }}
+                className="h-11 px-6 rounded-2xl text-sm font-semibold bg-black text-white hover:bg-neutral-800 cursor-pointer transition-all shadow-md active:scale-95"
+              >
+                Khám phá quán ngay
+              </button>
+            ) : activeTab === 'my-posts' ? (
+              <button
+                onClick={() => setIsCreateOpen(true)}
+                className="h-11 px-6 rounded-2xl text-sm font-semibold bg-black text-white hover:bg-neutral-800 cursor-pointer transition-all shadow-md active:scale-95"
+              >
+                + Đăng quán ngay
+              </button>
+            ) : searchQuery || selectedCategory !== 'all' ? (
               <button
                 onClick={() => {
                   setSearchQuery('');

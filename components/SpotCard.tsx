@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { MapPin, Navigation, Trash2, Copy, Check, Pencil } from 'lucide-react';
+import { MapPin, Navigation, Trash2, Copy, Check, Pencil, Bookmark, Share2 } from 'lucide-react';
 import { Spot } from '@/types/spot';
 import CategoryIcon from './CategoryIcon';
 
@@ -13,6 +13,9 @@ interface SpotCardProps {
   searchQuery?: string;
   onShowToast?: (msg: string) => void;
   onSelectCategory?: (category: string) => void;
+  isBookmarked?: boolean;
+  onToggleBookmark?: (spotId: string) => void;
+  isHighlighted?: boolean;
 }
 
 export default function SpotCard({ 
@@ -23,6 +26,9 @@ export default function SpotCard({
   searchQuery = '',
   onShowToast,
   onSelectCategory,
+  isBookmarked = false,
+  onToggleBookmark,
+  isHighlighted = false,
 }: SpotCardProps) {
   const [copied, setCopied] = useState(false);
   const mapsUrl = spot.google_maps_url || `https://maps.google.com/?q=${encodeURIComponent(spot.name + ' ' + spot.address)}`;
@@ -34,6 +40,37 @@ export default function SpotCard({
       setCopied(true);
       if (onShowToast) onShowToast('Đã chép địa chỉ');
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleShare = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const shareUrl = typeof window !== 'undefined'
+      ? `${window.location.origin}/?spot=${spot.id}`
+      : `https://animon.io.vn/?spot=${spot.id}`;
+
+    const shareData = {
+      title: `animon — ${spot.name}`,
+      text: `${spot.name} (${spot.address}) — Xem quán trên animon:`,
+      url: shareUrl,
+    };
+
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') return;
+      }
+    }
+
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        if (onShowToast) onShowToast('Đã chép link chia sẻ quán!');
+      } catch {
+        if (onShowToast) onShowToast('Không thể sao chép link');
+      }
     }
   };
 
@@ -53,7 +90,14 @@ export default function SpotCard({
   };
 
   return (
-    <article className="rounded-2xl bg-white border border-neutral-200/90 p-4.5 transition-all duration-200 shadow-[0_2px_8px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] hover:border-neutral-300 md:hover:-translate-y-1 flex flex-col justify-between gap-3.5 text-black h-full">
+    <article
+      id={`spot-${spot.id}`}
+      className={`rounded-2xl bg-white border p-4.5 transition-all duration-200 flex flex-col justify-between gap-3.5 text-black h-full ${
+        isHighlighted
+          ? 'border-black ring-2 ring-black shadow-xl scale-[1.01]'
+          : 'border-neutral-200/90 shadow-[0_2px_8px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] hover:border-neutral-300 md:hover:-translate-y-1'
+      }`}
+    >
       <div className="space-y-3">
         {/* Name, Category Badge, Edit & Delete Buttons */}
         <div className="flex items-start justify-between gap-2">
@@ -133,21 +177,53 @@ export default function SpotCard({
         )}
       </div>
 
-      {/* Footer: Author & Maps Button */}
-      <div className="pt-3 border-t border-neutral-100 flex items-center justify-between text-xs">
+      {/* Footer: Author, Bookmark, Share & Maps Button */}
+      <div className="pt-3 border-t border-neutral-100 flex items-center justify-between text-xs gap-2">
         <span className="text-xs text-neutral-500 truncate">
           bởi <b className="text-neutral-800 font-semibold">{spot.author_name}</b>
         </span>
 
-        <a
-          href={mapsUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-center gap-1.5 px-4 h-9 rounded-xl bg-black text-white font-semibold text-xs hover:bg-neutral-800 active:scale-95 transition-all shadow-sm shadow-black/10"
-        >
-          <Navigation className="w-3.5 h-3.5 text-white fill-white" />
-          <span>Chỉ đường</span>
-        </a>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Bookmark Button */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleBookmark && onToggleBookmark(spot.id);
+            }}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all active:scale-90 cursor-pointer ${
+              isBookmarked
+                ? 'bg-black text-white border-black shadow-sm'
+                : 'bg-white text-neutral-500 border-neutral-200 hover:text-black hover:border-neutral-300 hover:bg-neutral-50'
+            }`}
+            title={isBookmarked ? 'Bỏ lưu quán' : 'Lưu quán để dành'}
+            aria-label={isBookmarked ? 'Bỏ lưu quán' : 'Lưu quán để dành'}
+          >
+            <Bookmark className={`w-4 h-4 ${isBookmarked ? 'fill-white' : ''}`} />
+          </button>
+
+          {/* Share Button */}
+          <button
+            type="button"
+            onClick={handleShare}
+            className="w-9 h-9 rounded-xl flex items-center justify-center border border-neutral-200 bg-white text-neutral-500 hover:text-black hover:border-neutral-300 hover:bg-neutral-50 active:scale-90 transition-all cursor-pointer"
+            title="Chia sẻ quán"
+            aria-label="Chia sẻ quán"
+          >
+            <Share2 className="w-4 h-4" />
+          </button>
+
+          {/* Directions Button */}
+          <a
+            href={mapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-1.5 px-3.5 h-9 rounded-xl bg-black text-white font-semibold text-xs hover:bg-neutral-800 active:scale-95 transition-all shadow-sm shadow-black/10"
+          >
+            <Navigation className="w-3.5 h-3.5 text-white fill-white" />
+            <span>Chỉ đường</span>
+          </a>
+        </div>
       </div>
     </article>
   );
