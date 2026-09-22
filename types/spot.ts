@@ -13,6 +13,8 @@ export interface Spot {
   category?: string; // vd: "Hẹn hò", "Tụ họp", "Cú đêm" hoặc danh mục tùy chỉnh
   note?: string;
   google_maps_url?: string;
+  latitude?: number;
+  longitude?: number;
   created_by?: string;
   author_name: string;
   created_at: string;

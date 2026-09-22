@@ -56,8 +56,14 @@ CREATE TABLE IF NOT EXISTS public.spots (
   category TEXT DEFAULT 'Tụ họp',
   note TEXT DEFAULT '',
   google_maps_url TEXT DEFAULT '',
+  latitude DOUBLE PRECISION,
+  longitude DOUBLE PRECISION,
   created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
+
+-- Migration nếu bảng spots đã tồn tại:
+ALTER TABLE public.spots ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+ALTER TABLE public.spots ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
 
 ALTER TABLE public.spots ENABLE ROW LEVEL SECURITY;
 

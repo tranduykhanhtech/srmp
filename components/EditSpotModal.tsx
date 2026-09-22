@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Check, MapPin, Tag, Pencil } from 'lucide-react';
+import { X, Check, MapPin, Tag, Pencil, Navigation } from 'lucide-react';
 import { Spot } from '@/types/spot';
 import { DEFAULT_PRESET_CATEGORIES } from '@/lib/constants';
+import { extractCoordinatesFromUrl } from '@/lib/geo';
 import CategoryIcon from './CategoryIcon';
 
 interface EditSpotModalProps {
@@ -15,6 +16,8 @@ interface EditSpotModalProps {
     category: string;
     note?: string;
     google_maps_url: string;
+    latitude?: number;
+    longitude?: number;
   }) => Promise<void> | void;
   spot: Spot | null;
   existingCategories?: string[];
@@ -33,6 +36,8 @@ export default function EditSpotModal({
   const [isCustomCategory, setIsCustomCategory] = useState(false);
   const [customCategoryInput, setCustomCategoryInput] = useState('');
   const [note, setNote] = useState('');
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -56,6 +61,12 @@ export default function EditSpotModal({
         setCustomCategoryInput(cat);
         setCategory(cat);
       }
+      if (spot.latitude && spot.longitude) {
+        setCoords({ latitude: spot.latitude, longitude: spot.longitude });
+      } else {
+        const extracted = extractCoordinatesFromUrl(spot.google_maps_url || spot.address || '');
+        setCoords(extracted);
+      }
       setTimeout(() => inputRef.current?.focus(), 150);
     }
   }, [spot, isOpen]);
@@ -70,6 +81,24 @@ export default function EditSpotModal({
 
   if (!isOpen || !spot) return null;
 
+  const handleGetLocation = () => {
+    if (typeof window === 'undefined' || !navigator.geolocation) return;
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCoords({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        });
+        setIsLocating(false);
+      },
+      () => {
+        setIsLocating(false);
+      },
+      { timeout: 8000, enableHighAccuracy: true }
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !address.trim() || isSubmitting) return;
@@ -80,12 +109,22 @@ export default function EditSpotModal({
         ? (customCategoryInput.trim() || 'Khác')
         : category;
 
+      let finalCoords = coords;
+      if (!finalCoords) {
+        const extracted = extractCoordinatesFromUrl(address);
+        if (extracted) finalCoords = extracted;
+      }
+
       await onSubmit(spot.id, {
         name: name.trim(),
         address: address.trim(),
         category: finalCategory,
         note: note.trim() || undefined,
-        google_maps_url: `https://maps.google.com/?q=${encodeURIComponent(name.trim() + ' ' + address.trim())}`,
+        google_maps_url: finalCoords
+          ? `https://maps.google.com/?q=${finalCoords.latitude},${finalCoords.longitude}`
+          : `https://maps.google.com/?q=${encodeURIComponent(name.trim() + ' ' + address.trim())}`,
+        latitude: finalCoords?.latitude,
+        longitude: finalCoords?.longitude,
       });
 
       onClose();
@@ -229,6 +268,34 @@ export default function EditSpotModal({
                 className="w-full h-12 px-4 pl-10 rounded-xl bg-neutral-50/70 border border-neutral-200 text-black placeholder-neutral-400 focus:outline-none focus:border-black focus:bg-white transition-all text-[15px]"
               />
               <MapPin className="w-4.5 h-4.5 text-neutral-700 absolute left-3.5 top-3.5" />
+            </div>
+
+            {/* GPS Coordinates Helper */}
+            <div className="flex items-center justify-between mt-1.5 px-0.5">
+              {coords ? (
+                <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Đã ghim vị trí ({coords.latitude.toFixed(3)}, {coords.longitude.toFixed(3)})</span>
+                  <button
+                    type="button"
+                    onClick={() => setCoords(null)}
+                    className="text-neutral-400 hover:text-black ml-1 text-xs cursor-pointer"
+                    title="Bỏ ghim tọa độ"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleGetLocation}
+                  disabled={isLocating}
+                  className="inline-flex items-center gap-1.5 text-xs text-neutral-500 hover:text-black transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <Navigation className={`w-3.5 h-3.5 ${isLocating ? 'animate-spin' : ''}`} />
+                  <span>{isLocating ? 'Đang định vị...' : 'Gắn tọa độ vị trí hiện tại'}</span>
+                </button>
+              )}
             </div>
           </div>
 
