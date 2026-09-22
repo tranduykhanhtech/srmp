@@ -254,31 +254,58 @@ export default function Home() {
     if (supabaseReady) {
       try {
         const supabase = createClient();
-        const { data, error } = await supabase
+        const basePayload: Record<string, any> = {
+          name: newSpot.name,
+          address: newSpot.address,
+          category: newSpot.category,
+          note: newSpot.note,
+          google_maps_url: newSpot.google_maps_url,
+          author_name: newSpot.author_name,
+          created_by: user?.id,
+        };
+        if (tempId.includes('-') && tempId.length === 36) {
+          basePayload.id = tempId;
+        }
+
+        const payloadWithCoords = {
+          ...basePayload,
+          ...(typeof newSpot.latitude === 'number' && typeof newSpot.longitude === 'number'
+            ? { latitude: newSpot.latitude, longitude: newSpot.longitude }
+            : {}),
+        };
+
+        let { data, error } = await supabase
           .from('spots')
-          .insert([
-            {
-              id: tempId.includes('-') && tempId.length === 36 ? tempId : undefined,
-              name: newSpot.name,
-              address: newSpot.address,
-              category: newSpot.category,
-              note: newSpot.note,
-              google_maps_url: newSpot.google_maps_url,
-              latitude: newSpot.latitude,
-              longitude: newSpot.longitude,
-              author_name: newSpot.author_name,
-              created_by: user?.id,
-            },
-          ])
+          .insert([payloadWithCoords])
           .select()
           .single();
+
+        // Tự động fallback nếu DB remote chưa chạy migration thêm cột latitude / longitude (PGRST204)
+        if (
+          error &&
+          (error.code === 'PGRST204' ||
+            error.message?.includes('latitude') ||
+            error.message?.includes('longitude'))
+        ) {
+          console.warn('DB Supabase chưa có cột latitude/longitude, tự động lưu dự phòng:', error.message);
+          const fallbackRes = await supabase
+            .from('spots')
+            .insert([basePayload])
+            .select()
+            .single();
+          data = fallbackRes.data;
+          error = fallbackRes.error;
+        }
 
         if (error) {
           console.error('Lỗi khi lưu vào Supabase:', error);
           showToast(`Lưu ý DB: ${error.message}`);
         } else if (data) {
           setSpots((prev) => {
-            const updated = prev.map((s) => (s.id === tempId ? (data as Spot) : s));
+            const merged = { ...newSpot, ...(data as Spot) };
+            if (newSpot.latitude && !merged.latitude) merged.latitude = newSpot.latitude;
+            if (newSpot.longitude && !merged.longitude) merged.longitude = newSpot.longitude;
+            const updated = prev.map((s) => (s.id === tempId ? merged : s));
             try {
               localStorage.setItem('animon_spots_cache', JSON.stringify(updated));
             } catch {}
@@ -315,18 +342,40 @@ export default function Home() {
     if (supabaseReady) {
       try {
         const supabase = createClient();
-        const { error } = await supabase
+        const basePayload: Record<string, any> = {
+          name: updatedData.name,
+          address: updatedData.address,
+          category: updatedData.category,
+          note: updatedData.note,
+          google_maps_url: updatedData.google_maps_url,
+        };
+
+        const payloadWithCoords = {
+          ...basePayload,
+          ...(typeof updatedData.latitude === 'number' && typeof updatedData.longitude === 'number'
+            ? { latitude: updatedData.latitude, longitude: updatedData.longitude }
+            : {}),
+        };
+
+        let { error } = await supabase
           .from('spots')
-          .update({
-            name: updatedData.name,
-            address: updatedData.address,
-            category: updatedData.category,
-            note: updatedData.note,
-            google_maps_url: updatedData.google_maps_url,
-            latitude: updatedData.latitude,
-            longitude: updatedData.longitude,
-          })
+          .update(payloadWithCoords)
           .eq('id', spotId);
+
+        // Fallback nếu DB remote chưa có cột latitude/longitude
+        if (
+          error &&
+          (error.code === 'PGRST204' ||
+            error.message?.includes('latitude') ||
+            error.message?.includes('longitude'))
+        ) {
+          console.warn('DB Supabase chưa có cột latitude/longitude, tự động cập nhật dự phòng:', error.message);
+          const fallbackRes = await supabase
+            .from('spots')
+            .update(basePayload)
+            .eq('id', spotId);
+          error = fallbackRes.error;
+        }
 
         if (error) {
           console.error('Lỗi khi cập nhật Supabase:', error);
