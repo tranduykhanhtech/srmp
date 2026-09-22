@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Navbar from '@/components/Navbar';
 import SpotCard from '@/components/SpotCard';
 import CreateSpotModal from '@/components/CreateSpotModal';
@@ -24,6 +24,8 @@ export default function Home() {
   const [highlightedSpotId, setHighlightedSpotId] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isSearchFocused, setIsSearchFocused] = useState<boolean>(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'bookmarks' | 'my-posts'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
@@ -457,6 +459,60 @@ export default function Home() {
     return Array.from(new Set([...DEFAULT_PRESET_CATEGORIES, ...spotCategories]));
   }, [spots]);
 
+  // Compute top 4 most popular categories based on spots count
+  const topPopularCategories = useMemo(() => {
+    const counts: Record<string, number> = {};
+    spots.forEach((s) => {
+      if (s.category) {
+        counts[s.category] = (counts[s.category] || 0) + 1;
+      }
+    });
+    const sorted = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+    const merged = Array.from(new Set([...sorted, ...DEFAULT_PRESET_CATEGORIES]));
+    return merged.slice(0, 4);
+  }, [spots]);
+
+  // Click outside to close search dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setIsSearchFocused(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Dropdown suggestions when typing in search
+  const searchDropdownSpots = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase().trim();
+    return spots
+      .filter((spot) => {
+        const matchName = spot.name.toLowerCase().includes(q);
+        const matchAddress = spot.address.toLowerCase().includes(q);
+        const matchCategory = spot.category ? spot.category.toLowerCase().includes(q) : false;
+        const matchNote = spot.note ? spot.note.toLowerCase().includes(q) : false;
+        return matchName || matchAddress || matchCategory || matchNote;
+      })
+      .slice(0, 6);
+  }, [spots, searchQuery]);
+
+  // Handle select a spot from dropdown list
+  const handleSelectDropdownSpot = (spot: Spot) => {
+    setIsSearchFocused(false);
+    setActiveTab('all');
+    setSelectedCategory('all');
+    setTimeout(() => {
+      const el = document.getElementById(`spot-${spot.id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setHighlightedSpotId(spot.id);
+        setTimeout(() => setHighlightedSpotId(null), 3500);
+      }
+    }, 120);
+  };
+
   // Helper to resolve coordinates for a spot (from lat/lng or google_maps_url)
   const getSpotCoords = useCallback((spot: Spot) => {
     if (spot.latitude && spot.longitude) {
@@ -615,20 +671,30 @@ export default function Home() {
       {/* Sticky Apple Maps & Airbnb Style Search + Filter Header */}
       <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-md border-b border-neutral-200/80 py-2 md:py-3.5 px-3.5 sm:px-6 shadow-[0_1px_4px_rgba(0,0,0,0.02)]">
         <div className="max-w-md md:max-w-5xl lg:max-w-6xl mx-auto space-y-2 md:space-y-2.5">
-          {/* Floating Rounded Search Card */}
-          <div className="max-w-md md:max-w-xl mx-auto">
+          {/* Floating Rounded Search Card with Autocomplete Dropdown */}
+          <div ref={searchContainerRef} className="max-w-md md:max-w-xl mx-auto relative z-40">
             <div className="relative flex items-center bg-white border border-neutral-200/90 focus-within:border-black rounded-2xl px-3.5 md:px-4.5 h-10.5 md:h-12 transition-all shadow-[0_1px_4px_rgba(0,0,0,0.03)] focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.08)]">
               <Search className="w-4.5 h-4.5 md:w-5 md:h-5 text-neutral-400 shrink-0 mr-2.5 md:mr-3" />
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => setIsSearchFocused(true)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setIsSearchFocused(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setIsSearchFocused(false);
+                }}
                 placeholder="Tìm theo quán, địa chỉ, món ngon..."
                 className="w-full h-full bg-transparent text-sm md:text-[15px] text-neutral-900 placeholder-neutral-400 focus:outline-none"
               />
               {searchQuery && (
                 <button
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => {
+                    setSearchQuery('');
+                    setIsSearchFocused(false);
+                  }}
                   className="p-1 rounded-full hover:bg-neutral-100 text-neutral-400 hover:text-black transition-colors cursor-pointer"
                   aria-label="Xóa tìm kiếm"
                 >
@@ -636,6 +702,76 @@ export default function Home() {
                 </button>
               )}
             </div>
+
+            {/* Dropdown list when searching */}
+            {isSearchFocused && searchQuery.trim().length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-neutral-200/90 rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150">
+                {searchDropdownSpots.length > 0 ? (
+                  <div>
+                    <div className="py-2 px-3.5 bg-neutral-50/80 border-b border-neutral-100 flex items-center justify-between text-[11px] text-neutral-400 font-semibold uppercase tracking-wider">
+                      <span>Gợi ý địa điểm</span>
+                      <span>{searchDropdownSpots.length} kết quả</span>
+                    </div>
+                    <div className="max-h-72 overflow-y-auto divide-y divide-neutral-100">
+                      {searchDropdownSpots.map((spot) => {
+                        const distText = getDistanceText(spot);
+                        return (
+                          <button
+                            key={spot.id}
+                            type="button"
+                            onClick={() => handleSelectDropdownSpot(spot)}
+                            className="w-full px-3.5 py-2.5 text-left flex items-center justify-between hover:bg-neutral-50 transition-colors cursor-pointer group"
+                          >
+                            <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
+                              <div className="w-8 h-8 rounded-xl bg-neutral-100 flex items-center justify-center shrink-0 text-neutral-700 group-hover:bg-black group-hover:text-white transition-colors">
+                                <CategoryIcon category={spot.category || 'Tụ họp'} className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-bold text-neutral-900 leading-snug group-hover:text-black truncate">
+                                  {spot.name}
+                                </p>
+                                <p className="text-xs text-neutral-500 truncate">
+                                  {spot.address}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {distText && (
+                                <span className="text-[11px] font-semibold text-neutral-600 bg-neutral-100 px-2 py-0.5 rounded-full">
+                                  📍 {distText}
+                                </span>
+                              )}
+                              <span className="text-xs text-neutral-400 group-hover:text-black">
+                                →
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="px-3.5 py-2 bg-neutral-50 flex items-center justify-between text-[11px] text-neutral-500 border-t border-neutral-100">
+                      <span>Nhấn vào quán để xem ngay</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsSearchFocused(false)}
+                        className="font-semibold text-neutral-900 hover:underline cursor-pointer"
+                      >
+                        Xem danh sách bên dưới ↓
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-7 px-4 text-center space-y-1">
+                    <p className="text-sm font-semibold text-neutral-800">
+                      Không tìm thấy quán nào khớp với &quot;{searchQuery}&quot;
+                    </p>
+                    <p className="text-xs text-neutral-500">
+                      Thử tìm theo tên món, tên quán hoặc quận/huyện
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Airbnb Style Filter Chips Carousel */}
@@ -909,6 +1045,7 @@ export default function Home() {
         onSubmit={handleCreateSpot}
         user={user}
         existingCategories={availableCategories}
+        topCategories={topPopularCategories}
       />
 
       <EditSpotModal
@@ -917,6 +1054,7 @@ export default function Home() {
         onSubmit={handleEditSpot}
         spot={spotToEdit}
         existingCategories={availableCategories}
+        topCategories={topPopularCategories}
       />
 
       <AuthModal

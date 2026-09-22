@@ -78,21 +78,6 @@ export default function SpotCard({
     }
   };
 
-  // Highlight search term helper
-  const renderHighlighted = (text: string) => {
-    if (!searchQuery.trim()) return text;
-    const parts = text.split(new RegExp(`(${searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
-    return parts.map((part, i) =>
-      part.toLowerCase() === searchQuery.toLowerCase() ? (
-        <mark key={i} className="bg-yellow-200 text-black font-semibold rounded px-0.5">
-          {part}
-        </mark>
-      ) : (
-        part
-      )
-    );
-  };
-
   return (
     <article
       id={`spot-${spot.id}`}
@@ -107,7 +92,7 @@ export default function SpotCard({
         <div className="flex items-start justify-between gap-2">
           <div className="space-y-1.5 flex-1 min-w-0">
             <h2 className="font-bold text-[17px] text-neutral-900 leading-snug tracking-tight">
-              {renderHighlighted(spot.name)}
+              {spot.name}
             </h2>
 
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -164,7 +149,7 @@ export default function SpotCard({
           <div className="flex items-start gap-2 min-w-0">
             <MapPin className="w-4 h-4 text-neutral-800 shrink-0 mt-0.5" />
             <span className="leading-relaxed break-words">
-              {renderHighlighted(spot.address)}
+              {spot.address}
             </span>
           </div>
 
@@ -189,7 +174,7 @@ export default function SpotCard({
               Mẹo chuẩn gu
             </span>
             <span className="italic whitespace-pre-line leading-relaxed">
-              "{renderHighlighted(spot.note)}"
+              &quot;{spot.note}&quot;
             </span>
           </div>
         )}

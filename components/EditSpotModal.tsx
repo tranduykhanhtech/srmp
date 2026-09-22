@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Check, MapPin, Tag, Pencil, Navigation } from 'lucide-react';
+import { X, Check, MapPin, Tag, Pencil, Navigation, Compass } from 'lucide-react';
 import { Spot } from '@/types/spot';
 import { DEFAULT_PRESET_CATEGORIES } from '@/lib/constants';
 import { extractCoordinatesFromUrl } from '@/lib/geo';
 import CategoryIcon from './CategoryIcon';
+import CategorySelector from './CategorySelector';
+import MapPickerModal from './MapPickerModal';
 
 interface EditSpotModalProps {
   isOpen: boolean;
@@ -21,6 +23,7 @@ interface EditSpotModalProps {
   }) => Promise<void> | void;
   spot: Spot | null;
   existingCategories?: string[];
+  topCategories?: string[];
 }
 
 export default function EditSpotModal({
@@ -29,16 +32,16 @@ export default function EditSpotModal({
   onSubmit,
   spot,
   existingCategories = [],
+  topCategories = [],
 }: EditSpotModalProps) {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [category, setCategory] = useState('Tụ họp');
-  const [isCustomCategory, setIsCustomCategory] = useState(false);
-  const [customCategoryInput, setCustomCategoryInput] = useState('');
   const [note, setNote] = useState('');
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const allAvailableCategories = Array.from(
@@ -51,16 +54,7 @@ export default function EditSpotModal({
       setName(spot.name || '');
       setAddress(spot.address || '');
       setNote(spot.note || '');
-      const cat = spot.category || 'Tụ họp';
-      if (allAvailableCategories.includes(cat)) {
-        setCategory(cat);
-        setIsCustomCategory(false);
-        setCustomCategoryInput('');
-      } else {
-        setIsCustomCategory(true);
-        setCustomCategoryInput(cat);
-        setCategory(cat);
-      }
+      setCategory(spot.category || 'Tụ họp');
       if (spot.latitude && spot.longitude) {
         setCoords({ latitude: spot.latitude, longitude: spot.longitude });
       } else {
@@ -99,15 +93,24 @@ export default function EditSpotModal({
     );
   };
 
+  const handleLocationPicked = (loc: {
+    address: string;
+    latitude: number;
+    longitude: number;
+  }) => {
+    setCoords({ latitude: loc.latitude, longitude: loc.longitude });
+    if (!address.trim() || address.length < 5) {
+      setAddress(loc.address);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !address.trim() || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
-      const finalCategory = isCustomCategory
-        ? (customCategoryInput.trim() || 'Khác')
-        : category;
+      const finalCategory = category.trim() || 'Tụ họp';
 
       let finalCoords = coords;
       if (!finalCoords) {
@@ -191,59 +194,12 @@ export default function EditSpotModal({
           </div>
 
           {/* Danh mục (Category) */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-[13px] font-bold text-neutral-900 flex items-center gap-1.5">
-                <Tag className="w-4 h-4" />
-                <span>Danh mục</span>
-              </label>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsCustomCategory(!isCustomCategory);
-                  if (!isCustomCategory) setCustomCategoryInput('');
-                }}
-                className="text-xs font-semibold text-black underline cursor-pointer"
-              >
-                {isCustomCategory ? '← Chọn có sẵn' : '+ Tự tạo danh mục'}
-              </button>
-            </div>
-
-            {isCustomCategory ? (
-              <div className="space-y-1.5">
-                <input
-                  type="text"
-                  required={isCustomCategory}
-                  maxLength={30}
-                  value={customCategoryInput}
-                  onChange={(e) => setCustomCategoryInput(e.target.value)}
-                  placeholder="Nhập tên danh mục mới (tối đa 30 ký tự)"
-                  className="w-full h-11 px-4 rounded-xl bg-neutral-50 border border-neutral-200 text-black text-sm focus:outline-none focus:border-black focus:bg-white transition-all"
-                />
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {allAvailableCategories.map((cat) => {
-                  const isSelected = category === cat;
-                  return (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => setCategory(cat)}
-                      className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                        isSelected
-                          ? 'bg-black text-white shadow-sm'
-                          : 'bg-white text-neutral-700 border border-neutral-200 hover:border-neutral-400'
-                      }`}
-                    >
-                      <CategoryIcon category={cat} className="w-3.5 h-3.5" />
-                      <span>{cat}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <CategorySelector
+            selectedCategory={category}
+            onSelectCategory={setCategory}
+            allCategories={allAvailableCategories}
+            topCategories={topCategories}
+          />
 
           {/* Địa chỉ */}
           <div>
@@ -251,11 +207,14 @@ export default function EditSpotModal({
               <label className="block text-[13px] font-bold text-neutral-900">
                 Địa chỉ <span className="text-red-500">*</span>
               </label>
-              {address.length >= 150 && (
-                <span className="text-[11px] text-neutral-400 font-mono">
-                  {address.length}/200
-                </span>
-              )}
+              <button
+                type="button"
+                onClick={() => setIsMapPickerOpen(true)}
+                className="text-xs font-semibold text-neutral-800 hover:text-black hover:bg-neutral-100 px-2.5 py-1 rounded-full border border-neutral-200/90 transition-all flex items-center gap-1.5 cursor-pointer shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
+              >
+                <Compass className="w-3.5 h-3.5 text-black" />
+                <span>Chọn trên bản đồ</span>
+              </button>
             </div>
             <div className="relative">
               <input
@@ -264,7 +223,7 @@ export default function EditSpotModal({
                 maxLength={200}
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
-                placeholder="Số nhà, tên đường, quận/huyện..."
+                placeholder="Số nhà, tên đường hoặc chọn trên bản đồ..."
                 className="w-full h-12 px-4 pl-10 rounded-xl bg-neutral-50/70 border border-neutral-200 text-black placeholder-neutral-400 focus:outline-none focus:border-black focus:bg-white transition-all text-[15px]"
               />
               <MapPin className="w-4.5 h-4.5 text-neutral-700 absolute left-3.5 top-3.5" />
@@ -275,7 +234,14 @@ export default function EditSpotModal({
               {coords ? (
                 <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
                   <Check className="w-3.5 h-3.5" />
-                  <span>Đã ghim vị trí ({coords.latitude.toFixed(3)}, {coords.longitude.toFixed(3)})</span>
+                  <span>Đã ghim ({coords.latitude.toFixed(4)}, {coords.longitude.toFixed(4)})</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsMapPickerOpen(true)}
+                    className="text-neutral-500 hover:text-black underline ml-1 text-xs cursor-pointer"
+                  >
+                    Xem lại
+                  </button>
                   <button
                     type="button"
                     onClick={() => setCoords(null)}
@@ -349,6 +315,15 @@ export default function EditSpotModal({
           </div>
         </form>
       </div>
+
+      {/* Map Picker Modal */}
+      <MapPickerModal
+        isOpen={isMapPickerOpen}
+        onClose={() => setIsMapPickerOpen(false)}
+        onSelectLocation={handleLocationPicked}
+        initialCoords={coords}
+        initialAddress={address}
+      />
     </div>
   );
 }
