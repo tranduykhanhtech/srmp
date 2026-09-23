@@ -1,23 +1,27 @@
 'use client';
 
 import React from 'react';
-import { LogOut } from 'lucide-react';
+import { LogOut, Receipt } from 'lucide-react';
+import { triggerHaptic } from '@/lib/haptics';
 
 interface NavbarProps {
   user: { name: string; email: string; avatar: string } | null;
   onOpenAuth: () => void;
   onOpenCreateSpot?: () => void;
+  onOpenReceipt?: () => void;
   onSignOut: () => void;
 }
 
 export default function Navbar({
   user,
   onOpenAuth,
+  onOpenReceipt,
   onSignOut,
 }: NavbarProps) {
   const [imgError, setImgError] = React.useState(false);
 
   const scrollToTop = () => {
+    triggerHaptic('light');
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -43,7 +47,22 @@ export default function Navbar({
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          {/* Gourmet Receipt Action */}
+          {onOpenReceipt && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('medium');
+                onOpenReceipt();
+              }}
+              className="flex items-center gap-1.5 h-8.5 md:h-9 px-3 sm:px-3.5 rounded-full border border-neutral-300 bg-white text-neutral-800 hover:border-black hover:text-black active:scale-95 text-xs font-semibold transition-all cursor-pointer shadow-xs"
+              title="Xuất hóa đơn gu ẩm thực (Gourmet Receipt)"
+            >
+              <Receipt className="w-3.5 h-3.5 stroke-[2.2]" />
+              <span className="text-[11px] sm:text-xs">Hóa đơn gu</span>
+            </button>
+          )}
           {/* User Auth */}
           {user ? (
             <div className="flex items-center gap-2.5">

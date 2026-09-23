@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { X, Dices, MapPin, Navigation, Sparkles, RefreshCw } from 'lucide-react';
 import { Spot } from '@/types/spot';
 import CategoryIcon from './CategoryIcon';
+import { triggerHaptic } from '@/lib/haptics';
 
 interface RandomSpotModalProps {
   isOpen: boolean;
@@ -32,10 +33,12 @@ export default function RandomSpotModal({
     if (spots.length === 1) {
       setPickedSpot(spots[0]);
       setDisplaySpot(spots[0]);
+      triggerHaptic('success');
       return;
     }
 
     setIsSpinning(true);
+    triggerHaptic('medium');
 
     let counter = 0;
     const maxSteps = 12;
@@ -43,6 +46,7 @@ export default function RandomSpotModal({
       const randomIdx = Math.floor(Math.random() * spots.length);
       setDisplaySpot(spots[randomIdx]);
       counter++;
+      triggerHaptic('selection');
 
       if (counter >= maxSteps) {
         clearInterval(interval);
@@ -55,6 +59,7 @@ export default function RandomSpotModal({
         setDisplaySpot(finalSpot);
         setPickedSpot(finalSpot);
         setIsSpinning(false);
+        triggerHaptic('success');
       }
     }, 65);
   }, [spots, displaySpot]);

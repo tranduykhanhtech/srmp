@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { MapPin, Navigation, Trash2, Copy, Check, Pencil, Bookmark, Share2, QrCode } from 'lucide-react';
 import { Spot } from '@/types/spot';
 import CategoryIcon from './CategoryIcon';
+import { triggerHaptic } from '@/lib/haptics';
 
 interface SpotCardProps {
   spot: Spot;
@@ -39,6 +40,7 @@ export default function SpotCard({
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
+    triggerHaptic('light');
     if (typeof window !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(`${spot.name}, ${spot.address}`);
       setCopied(true);
@@ -49,6 +51,7 @@ export default function SpotCard({
 
   const handleShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    triggerHaptic('light');
     const shareUrl = typeof window !== 'undefined'
       ? `${window.location.origin}/?spot=${spot.id}`
       : `https://animon.io.vn/?spot=${spot.id}`;
@@ -99,7 +102,10 @@ export default function SpotCard({
               {spot.category && (
                 <button
                   type="button"
-                  onClick={() => onSelectCategory && onSelectCategory(spot.category!)}
+                  onClick={() => {
+                    triggerHaptic('selection');
+                    onSelectCategory && onSelectCategory(spot.category!);
+                  }}
                   className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-neutral-100 hover:bg-neutral-200 text-neutral-800 border border-neutral-200/80 transition-colors cursor-pointer"
                 >
                   <CategoryIcon category={spot.category} className="w-3.5 h-3.5 text-neutral-700" />
@@ -192,6 +198,7 @@ export default function SpotCard({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
+              triggerHaptic('medium');
               onToggleBookmark && onToggleBookmark(spot.id);
             }}
             className={`w-8 h-8 sm:w-8.5 sm:h-8.5 rounded-lg sm:rounded-xl flex items-center justify-center border transition-all active:scale-90 cursor-pointer ${
@@ -221,6 +228,7 @@ export default function SpotCard({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
+              triggerHaptic('light');
               onOpenQr && onOpenQr(spot);
             }}
             className="w-8 h-8 sm:w-8.5 sm:h-8.5 rounded-lg sm:rounded-xl flex items-center justify-center border border-neutral-200 bg-white text-neutral-500 hover:text-black hover:border-neutral-300 hover:bg-neutral-50 active:scale-90 transition-all cursor-pointer"
@@ -235,6 +243,7 @@ export default function SpotCard({
             href={mapsUrl}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => triggerHaptic('light')}
             className="flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 h-8 sm:h-8.5 rounded-lg sm:rounded-xl bg-black text-white font-semibold text-[11px] sm:text-xs hover:bg-neutral-800 active:scale-95 transition-all shadow-xs"
           >
             <Navigation className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white fill-white" />

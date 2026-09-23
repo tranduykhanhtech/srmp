@@ -8,13 +8,15 @@ import EditSpotModal from '@/components/EditSpotModal';
 import AuthModal from '@/components/AuthModal';
 import RandomSpotModal from '@/components/RandomSpotModal';
 import QrCodeModal from '@/components/QrCodeModal';
+import ReceiptModal from '@/components/ReceiptModal';
 import CategoryIcon from '@/components/CategoryIcon';
 import { Spot } from '@/types/spot';
 import { DEFAULT_PRESET_CATEGORIES } from '@/lib/constants';
 import { INITIAL_SEED_SPOTS } from '@/lib/seed-data';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { calculateDistanceKm, formatDistance, extractCoordinatesFromUrl, geocodeAddressViaNominatim } from '@/lib/geo';
-import { Search, X, Plus, MapPin, CheckCircle2, Bookmark, Dices, Navigation, ArrowUp } from 'lucide-react';
+import { triggerHaptic } from '@/lib/haptics';
+import { Search, X, Plus, MapPin, CheckCircle2, Bookmark, Dices, Navigation, ArrowUp, Receipt } from 'lucide-react';
 
 export default function Home() {
   // Auth & Data state (Hydration-safe: matches server on initial render)
@@ -43,6 +45,7 @@ export default function Home() {
   const [qrSpot, setQrSpot] = useState<Spot | null>(null);
   const [spotToEdit, setSpotToEdit] = useState<Spot | null>(null);
   const [spotToDelete, setSpotToDelete] = useState<Spot | null>(null);
+  const [isReceiptOpen, setIsReceiptOpen] = useState(false);
 
   // Toast
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -761,8 +764,18 @@ export default function Home() {
       {/* Header */}
       <Navbar
         user={user}
-        onOpenAuth={() => setIsAuthOpen(true)}
-        onOpenCreateSpot={() => setIsCreateOpen(true)}
+        onOpenAuth={() => {
+          triggerHaptic('light');
+          setIsAuthOpen(true);
+        }}
+        onOpenCreateSpot={() => {
+          triggerHaptic('light');
+          setIsCreateOpen(true);
+        }}
+        onOpenReceipt={() => {
+          triggerHaptic('medium');
+          setIsReceiptOpen(true);
+        }}
         onSignOut={handleSignOut}
       />
 
@@ -875,7 +888,10 @@ export default function Home() {
           {/* Airbnb Style Filter Chips Carousel */}
           <div className="flex items-center gap-1.5 md:gap-2 overflow-x-auto md:justify-center pb-1 pt-0.5 scrollbar-none no-scrollbar">
             <button
-              onClick={() => setSelectedCategory('all')}
+              onClick={() => {
+                triggerHaptic('selection');
+                setSelectedCategory('all');
+              }}
               className={`flex items-center gap-1.5 md:gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-sm font-medium whitespace-nowrap transition-all cursor-pointer border ${
                 selectedCategory === 'all'
                   ? 'bg-black text-white border-black shadow-sm'
@@ -891,7 +907,10 @@ export default function Home() {
               return (
                 <button
                   key={cat}
-                  onClick={() => setSelectedCategory(isActive ? 'all' : cat)}
+                  onClick={() => {
+                    triggerHaptic('selection');
+                    setSelectedCategory(isActive ? 'all' : cat);
+                  }}
                   className={`flex items-center gap-1.5 md:gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-sm font-medium whitespace-nowrap transition-all cursor-pointer border ${
                     isActive
                       ? 'bg-black text-white border-black shadow-sm'
@@ -915,7 +934,10 @@ export default function Home() {
               {/* Nút Hôm nay ăn gì? */}
               <button
                 type="button"
-                onClick={() => setIsRandomOpen(true)}
+                onClick={() => {
+                  triggerHaptic('medium');
+                  setIsRandomOpen(true);
+                }}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-semibold bg-black text-white border border-black hover:bg-neutral-800 active:scale-95 transition-all shadow-xs cursor-pointer"
                 title="Quay ngẫu nhiên chọn quán ăn"
               >
@@ -926,7 +948,10 @@ export default function Home() {
               {/* Nút Gần tôi */}
               <button
                 type="button"
-                onClick={handleToggleNearMe}
+                onClick={() => {
+                  triggerHaptic('light');
+                  handleToggleNearMe();
+                }}
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-semibold transition-all cursor-pointer border ${
                   sortByDistance
                     ? 'bg-black text-white border-black shadow-xs'
@@ -937,12 +962,29 @@ export default function Home() {
                 <Navigation className={`w-3 h-3 ${isGettingLocation ? 'animate-spin' : ''}`} />
                 <span>{isGettingLocation ? 'Đang định vị...' : 'Gần tôi'}</span>
               </button>
+
+              {/* Nút Hóa Đơn Gu */}
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('medium');
+                  setIsReceiptOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-semibold bg-white text-neutral-800 border border-neutral-300 hover:border-black hover:text-black active:scale-95 transition-all shadow-xs cursor-pointer"
+                title="Xuất hóa đơn gu ẩm thực cá nhân"
+              >
+                <Receipt className="w-3.5 h-3.5 stroke-[2.2]" />
+                <span>Hóa đơn gu</span>
+              </button>
             </div>
 
             {/* Segmented Control Tabs */}
             <div className="flex items-center p-0.5 bg-neutral-100 rounded-xl border border-neutral-200/80 text-[11px] md:text-xs font-semibold">
               <button
-                onClick={() => setActiveTab('all')}
+                onClick={() => {
+                  triggerHaptic('selection');
+                  setActiveTab('all');
+                }}
                 className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-lg transition-all cursor-pointer ${
                   activeTab === 'all'
                     ? 'bg-white text-black shadow-xs font-bold'
@@ -953,6 +995,7 @@ export default function Home() {
               </button>
               <button
                 onClick={() => {
+                  triggerHaptic('selection');
                   if (!user) {
                     setIsAuthOpen(true);
                     showToast('Vui lòng đăng nhập để xem danh sách đã lưu!');
@@ -980,7 +1023,10 @@ export default function Home() {
               </button>
               {user && (
                 <button
-                  onClick={() => setActiveTab('my-posts')}
+                  onClick={() => {
+                    triggerHaptic('selection');
+                    setActiveTab('my-posts');
+                  }}
                   className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-lg transition-all cursor-pointer ${
                     activeTab === 'my-posts'
                       ? 'bg-white text-black shadow-xs font-bold'
@@ -1128,7 +1174,10 @@ export default function Home() {
         {user && (
           <button
             type="button"
-            onClick={() => setIsCreateOpen(true)}
+            onClick={() => {
+              triggerHaptic('light');
+              setIsCreateOpen(true);
+            }}
             className="h-11 sm:h-12 px-4 sm:px-5 rounded-full bg-black text-white shadow-[0_4px_20px_rgba(0,0,0,0.25)] hover:shadow-[0_6px_24px_rgba(0,0,0,0.35)] flex items-center gap-2 active:scale-95 transition-all cursor-pointer font-bold text-xs sm:text-sm hover:bg-neutral-800 pointer-events-auto"
             aria-label="Thêm quán mới"
           >
@@ -1140,7 +1189,10 @@ export default function Home() {
         {/* 2. Scroll To Top Button (Stacked above Add Spot, or at bottom if not logged in) */}
         <button
           type="button"
-          onClick={scrollToTop}
+          onClick={() => {
+            triggerHaptic('light');
+            scrollToTop();
+          }}
           className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/95 text-neutral-800 hover:text-black hover:bg-neutral-50 border border-neutral-300/80 shadow-[0_4px_16px_rgba(0,0,0,0.12)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.2)] flex items-center justify-center active:scale-90 transition-all duration-200 backdrop-blur-md cursor-pointer ${
             showScrollTop
               ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto'
@@ -1190,6 +1242,16 @@ export default function Home() {
         isOpen={Boolean(qrSpot)}
         onClose={() => setQrSpot(null)}
         spot={qrSpot}
+        onShowToast={showToast}
+      />
+
+      {/* Gourmet Receipt Modal */}
+      <ReceiptModal
+        isOpen={isReceiptOpen}
+        onClose={() => setIsReceiptOpen(false)}
+        allSpots={spots}
+        bookmarkedSpots={spots.filter((s) => bookmarkedIds.includes(s.id))}
+        userName={user?.name || 'Tín đồ ẩm thực'}
         onShowToast={showToast}
       />
 
