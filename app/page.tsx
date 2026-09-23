@@ -11,6 +11,7 @@ import QrCodeModal from '@/components/QrCodeModal';
 import CategoryIcon from '@/components/CategoryIcon';
 import { Spot } from '@/types/spot';
 import { DEFAULT_PRESET_CATEGORIES } from '@/lib/constants';
+import { INITIAL_SEED_SPOTS } from '@/lib/seed-data';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { calculateDistanceKm, formatDistance, extractCoordinatesFromUrl } from '@/lib/geo';
 import { Search, X, Plus, MapPin, CheckCircle2, Bookmark, Dices, Navigation } from 'lucide-react';
@@ -93,9 +94,18 @@ export default function Home() {
         if (Array.isArray(parsed) && parsed.length > 0) {
           setSpots(parsed);
           setLoading(false);
+        } else {
+          setSpots(INITIAL_SEED_SPOTS);
+          setLoading(false);
         }
+      } else {
+        setSpots(INITIAL_SEED_SPOTS);
+        setLoading(false);
       }
-    } catch {}
+    } catch {
+      setSpots(INITIAL_SEED_SPOTS);
+      setLoading(false);
+    }
 
     if (supabaseReady) {
       const supabase = createClient();
@@ -198,10 +208,14 @@ export default function Home() {
           if (error) {
             console.warn('Supabase fetch spots note:', error.message);
           } else if (data) {
-            setSpots(data);
-            try {
-              localStorage.setItem('animon_spots_cache', JSON.stringify(data));
-            } catch {}
+            if (data.length > 0) {
+              setSpots(data);
+              try {
+                localStorage.setItem('animon_spots_cache', JSON.stringify(data));
+              } catch {}
+            } else {
+              setSpots(INITIAL_SEED_SPOTS);
+            }
           }
         } catch (err) {
           console.warn('Supabase network error:', err);
@@ -219,6 +233,7 @@ export default function Home() {
         subscription.unsubscribe();
       };
     } else {
+      setSpots(INITIAL_SEED_SPOTS);
       setLoading(false);
     }
   }, [supabaseReady]);
