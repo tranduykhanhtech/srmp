@@ -92,3 +92,47 @@ export function formatDistance(distanceKm: number): string {
   }
   return `${Math.round(distanceKm)} km`;
 }
+
+/**
+ * Tự động tìm kiếm tọa độ (latitude, longitude) từ chuỗi địa chỉ văn bản
+ * Sử dụng OpenStreetMap Nominatim hoàn toàn miễn phí
+ */
+export async function geocodeAddressViaNominatim(address: string): Promise<Coordinates | null> {
+  if (!address || typeof address !== 'string' || address.trim().length < 3) return null;
+
+  // 1. Thử nguyên văn trước
+  // 2. Nếu không ra, bỏ bớt số nhà và ký tự đầu để tìm tên đường + quận/huyện
+  const queries = [
+    address.trim(),
+    address.replace(/^[\d\s\-\/\,]+[a-zA-Z]?\s+(?:Đ\.|Đường|Phố|Ngõ|Hẻm)?/i, '').trim(),
+  ].filter((q, idx, arr) => q.length >= 3 && arr.indexOf(q) === idx);
+
+  for (const q of queries) {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          q
+        )}&countrycodes=vn&limit=1`,
+        {
+          headers: {
+            'Accept-Language': 'vi,en;q=0.9',
+          },
+        }
+      );
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        const lat = parseFloat(data[0].lat);
+        const lon = parseFloat(data[0].lon);
+        if (isValidCoord(lat, lon)) {
+          return { latitude: lat, longitude: lon };
+        }
+      }
+    } catch {
+      // bỏ qua nếu lỗi mạng và thử tiếp
+    }
+  }
+
+  return null;
+}
+

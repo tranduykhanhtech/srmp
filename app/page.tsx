@@ -13,8 +13,8 @@ import { Spot } from '@/types/spot';
 import { DEFAULT_PRESET_CATEGORIES } from '@/lib/constants';
 import { INITIAL_SEED_SPOTS } from '@/lib/seed-data';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
-import { calculateDistanceKm, formatDistance, extractCoordinatesFromUrl } from '@/lib/geo';
-import { Search, X, Plus, MapPin, CheckCircle2, Bookmark, Dices, Navigation } from 'lucide-react';
+import { calculateDistanceKm, formatDistance, extractCoordinatesFromUrl, geocodeAddressViaNominatim } from '@/lib/geo';
+import { Search, X, Plus, MapPin, CheckCircle2, Bookmark, Dices, Navigation, ArrowUp } from 'lucide-react';
 
 export default function Home() {
   // Auth & Data state (Hydration-safe: matches server on initial render)
@@ -34,6 +34,7 @@ export default function Home() {
   const [userCoords, setUserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [sortByDistance, setSortByDistance] = useState<boolean>(false);
   const [isGettingLocation, setIsGettingLocation] = useState<boolean>(false);
+  const [geocodedMap, setGeocodedMap] = useState<Record<string, { latitude: number; longitude: number }>>({});
 
   // Modals
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -49,6 +50,26 @@ export default function Home() {
   const showToast = (msg: string) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 2500);
+  };
+
+  // Scroll to top
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 350);
+    };
+
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
   };
 
   // Sync Supabase Auth & Spots & Bookmarks
@@ -76,6 +97,13 @@ export default function Home() {
         localStorage.removeItem('animon_bookmarks');
       } catch {}
     }
+
+    try {
+      const savedGeocodes = localStorage.getItem('animon_geocoded_cache');
+      if (savedGeocodes) {
+        setGeocodedMap(JSON.parse(savedGeocodes));
+      }
+    } catch {}
 
     try {
       if (typeof window !== 'undefined') {
@@ -528,13 +556,68 @@ export default function Home() {
     }, 120);
   };
 
-  // Helper to resolve coordinates for a spot (from lat/lng or google_maps_url)
-  const getSpotCoords = useCallback((spot: Spot) => {
-    if (spot.latitude && spot.longitude) {
-      return { latitude: spot.latitude, longitude: spot.longitude };
-    }
-    return extractCoordinatesFromUrl(spot.google_maps_url || spot.address || '');
-  }, []);
+  // Helper to resolve coordinates for a spot (from lat/lng, geocoded cache, or google_maps_url)
+  const getSpotCoords = useCallback(
+    (spot: Spot) => {
+      if (typeof spot.latitude === 'number' && typeof spot.longitude === 'number') {
+        return { latitude: spot.latitude, longitude: spot.longitude };
+      }
+      if (geocodedMap[spot.id]) return geocodedMap[spot.id];
+      if (geocodedMap[spot.address]) return geocodedMap[spot.address];
+      return extractCoordinatesFromUrl(spot.google_maps_url || spot.address || '');
+    },
+    [geocodedMap]
+  );
+
+  // Auto-geocode spots in the background when "Gần tôi" is active
+  useEffect(() => {
+    if (!sortByDistance && !userCoords) return;
+
+    const spotsNeedingGeocode = spots.filter((s) => {
+      const hasCoords = typeof s.latitude === 'number' && typeof s.longitude === 'number';
+      const hasCache = Boolean(geocodedMap[s.id] || geocodedMap[s.address]);
+      return !hasCoords && !hasCache && Boolean(s.address);
+    });
+
+    if (spotsNeedingGeocode.length === 0) return;
+
+    let isCancelled = false;
+
+    const runGeocodeQueue = async () => {
+      for (const s of spotsNeedingGeocode.slice(0, 15)) {
+        if (isCancelled) break;
+        const coords = await geocodeAddressViaNominatim(s.address);
+        if (coords && !isCancelled) {
+          setGeocodedMap((prev) => {
+            const next = { ...prev, [s.id]: coords, [s.address]: coords };
+            try {
+              localStorage.setItem('animon_geocoded_cache', JSON.stringify(next));
+            } catch {}
+            return next;
+          });
+
+          // Sync to Supabase in the background if possible
+          if (supabaseReady) {
+            try {
+              const supabase = createClient();
+              supabase
+                .from('spots')
+                .update({ latitude: coords.latitude, longitude: coords.longitude })
+                .eq('id', s.id)
+                .then(() => {});
+            } catch {}
+          }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      }
+    };
+
+    runGeocodeQueue();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [spots, sortByDistance, userCoords, geocodedMap, supabaseReady]);
 
   // Helper to get distance in km from user's current GPS location
   const getSpotDistanceKm = useCallback(
@@ -1039,19 +1122,36 @@ export default function Home() {
         </div>
       </footer>
 
-      {/* Floating Action Button - Fixed bottom right, only shown after user logs in */}
-      {user && (
-        <div className="fixed bottom-5 right-4 sm:bottom-8 sm:right-8 z-30 pb-safe">
+      {/* Floating Action Buttons */}
+      <div className="fixed bottom-5 right-4 sm:bottom-8 sm:right-8 z-30 flex flex-col-reverse items-end gap-2.5 pb-safe pointer-events-none">
+        {/* 1. Add Spot (Only when logged in, anchored to bottom) */}
+        {user && (
           <button
+            type="button"
             onClick={() => setIsCreateOpen(true)}
-            className="h-11 sm:h-12 px-4 sm:px-5 rounded-full bg-black text-white shadow-[0_4px_20px_rgba(0,0,0,0.25)] hover:shadow-[0_6px_24px_rgba(0,0,0,0.35)] flex items-center gap-2 active:scale-95 transition-all cursor-pointer font-bold text-xs sm:text-sm hover:bg-neutral-800"
+            className="h-11 sm:h-12 px-4 sm:px-5 rounded-full bg-black text-white shadow-[0_4px_20px_rgba(0,0,0,0.25)] hover:shadow-[0_6px_24px_rgba(0,0,0,0.35)] flex items-center gap-2 active:scale-95 transition-all cursor-pointer font-bold text-xs sm:text-sm hover:bg-neutral-800 pointer-events-auto"
             aria-label="Thêm quán mới"
           >
             <Plus className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.5]" />
             <span>Thêm quán</span>
           </button>
-        </div>
-      )}
+        )}
+
+        {/* 2. Scroll To Top Button (Stacked above Add Spot, or at bottom if not logged in) */}
+        <button
+          type="button"
+          onClick={scrollToTop}
+          className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/95 text-neutral-800 hover:text-black hover:bg-neutral-50 border border-neutral-300/80 shadow-[0_4px_16px_rgba(0,0,0,0.12)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.2)] flex items-center justify-center active:scale-90 transition-all duration-200 backdrop-blur-md cursor-pointer ${
+            showScrollTop
+              ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto'
+              : 'opacity-0 translate-y-2 scale-90 pointer-events-none'
+          }`}
+          aria-label="Cuộn lên đầu trang"
+          title="Lên đầu trang"
+        >
+          <ArrowUp className="w-4.5 h-4.5 stroke-[2.2]" />
+        </button>
+      </div>
 
       {/* Modals */}
       <CreateSpotModal
